@@ -1,0 +1,62 @@
+name: Deploy Web App and Calculate Split
+
+on:
+  push:
+    branches:
+      - main
+  repository_dispatch:
+    types: [log_expense]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Google Dependencies
+        run: |
+          pip install google-auth google-api-python-client
+
+      # Process calculation if triggered via web form submission
+      - name: Process New Expense Entry
+        if: github.event_name == 'repository_dispatch'
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          NEW_EXPENSE: ${{ toJson(github.event.client_payload) }}
+        run: |
+          python process_expense.py
+
+          # Commit the newly appended data back into the repository safely
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@://github.com'
+          git add expenses.json
+          git commit -m "Update expense logs [skip ci]" || echo "No changes to log"
+          git push
+
+      # Securely compile keys into index.html for viewing
+      - name: Inject Configuration Secrets
+        run: |
+          sed -i "s/{{SPREADSHEET_ID}}/${{ secrets.SPREADSHEET_ID }}/g" index.html
+          sed -i "s/{{API_KEY}}/${{ secrets.API_KEY }}/g" index.html
+          sed -i "s/{{GITHUB_PERSONAL_ACCESS_TOKEN}}/${{ secrets.PAT_TOKEN }}/g" index.html
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      # Publish your website live onto GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
