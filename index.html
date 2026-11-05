@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chiang Mai Split Bills</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; max-width: 500px; margin: 0 auto; background: #f0f2f5; color: #333; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h2, h3 { margin-top: 0; color: #1a1a1a; }
+        label { display: block; margin-top: 12px; font-weight: 600; font-size: 14px; }
+        input, select, button { width: 100%; padding: 12px; margin-top: 6px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        input:focus, select:focus { border-color: #007bff; outline: none; }
+        button { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 18px; transition: background 0.2s; }
+        button:hover { background: #0056b3; }
+        .refresh-btn { background: #28a745; margin-bottom: 15px; }
+        .refresh-btn:hover { background: #218838; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; }
+        th { background-color: #f8f9fa; font-weight: 600; }
+        .negative { color: #dc3545; font-weight: 600; }
+        .positive { color: #28a745; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <h2>🇹🇭 Chiang Mai Trip Bills</h2>
+    
+    <button class="refresh-btn" onclick="fetchLatestData()">🔄 Refresh Cloud Balances</button>
+
+    <div class="card">
+        <h3>Current Balances (HKD)</h3>
+        <div id="loading">Loading current wallet status...</div>
+        <table id="balanceTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Paid</th>
+                    <th>Owes</th>
+                    <th>Balance</th>
+                </tr>
+            </thead>
+            <tbody id="balanceBody"></tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Add New Bill</h3>
+        <form id="expenseForm">
+            <label>Description</label>
+            <input type="text" id="description" required placeholder="e.g., Night Market Khao Soi">
+
+            <label>Currency</label>
+            <select id="currency">
+                <option value="THB">THB (฿)</option>
+                <option value="HKD">HKD ($)</option>
+            </select>
+
+            <label>Amount</label>
+            <input type="number" id="amount" step="0.01" required placeholder="0.00">
+
+            <label>Paid By</label>
+            <select id="paid_by">
+                <option value="Mandy">Mandy</option>
+                <option value="Winifred">Winifred</option>
+                <option value="Mark">Mark</option>
+            </select>
+
+            <label>Split Rules</label>
+            <select id="split_type" onchange="toggleSplitInputs()">
+                <option value="equally">Split Equally Between All 3</option>
+                <option value="by_amount">Split by Exact Amount</option>
+                <option value="by_percentage">Split by Percentage (%)</option>
+            </select>
+
+            <div id="customSplitDetails" style="display:none; margin-top:12px; background:#f8f9fa; padding:12px; border-radius:8px; border:1px dashed #ccc;">
+                <p style="margin:0 0 8px 0; font-size:12px; color:#666;">Enter split shares for Mandy, Winifred, and Mark:</p>
+                <label style="margin-top:5px;">Mandy:</label>
+                <input type="number" id="val_Mandy" value="0" step="0.01">
+                <label style="margin-top:5px;">Winifred:</label>
+                <input type="number" id="val_Winifred" value="0" step="0.01">
+                <label style="margin-top:5px;">Mark:</label>
+                <input type="number" id="val_Mark" value="0" step="0.01">
+            </div>
+
+            <button type="submit">🚀 Sync to Google Drive</button>
+        </form>
+    </div>
+
+    <script>
+        // These placeholders will be securely swapped out by GitHub Actions later
+        const SPREADSHEET_ID = '{{SPREADSHEET_ID}}';
+        const API_KEY = '{{API_KEY}}';
+
+        function toggleSplitInputs() {
+            const type = document.getElementById('split_type').value;
+            document.getElementById('customSplitDetails').style.display = (type === 'equally') ? 'none' : 'block';
+        }
+
+        // Always pulls clean, live data from Google Sheets when pressed or loaded
+        async function fetchLatestData() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('balanceTable').style.display = 'none';
+            try {
+                const response = await fetch(`https://googleapis.com{SPREADSHEET_ID}/values/Sheet1!A1:D4?key=${API_KEY}`);
+                const data = await response.json();
+                
+                if (data.values && data.values.length > 1) {
+                    let rowsHtml = '';
+                    for(let i = 1; i < data.values.length; i++) {
+                        const row = data.values[i];
+                        const balance = parseFloat(row[3] || 0);
+                        const balClass = balance >= 0 ? 'positive' : 'negative';
+                        rowsHtml += `<tr>
+                            <td><strong>${row[0]}</strong></td>
+                            <td>$${row[1]}</td>
+                            <td>$${row[2]}</td>
+                            <td class="${balClass}">$${balance.toFixed(2)}</td>
+                        </tr>`;
+                    }
+                    document.getElementById('balanceBody').innerHTML = rowsHtml;
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('balanceTable').style.display = 'block';
+                } else {
+                    document.getElementById('loading').innerText = 'No cloud balances computed yet. Try adding a bill first!';
+                }
+            } catch (error) {
+                document.getElementById('loading').innerText = 'Could not fetch data. Make sure Step 1 & 2 are complete and your Sheet is shared.';
+            }
+        }
+
+        // Submits your form inputs straight up into GitHub's automated processing queue
+        document.getElementById('expenseForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const description = document.getElementById('description').value;
+            const currency = document.getElementById('currency').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            const paid_by = document.getElementById('paid_by').value;
+            const split_type = document.getElementById('split_type').value;
+            
+            let split_details = {};
+            if (split_type === 'equally') {
+                split_details = ["Mandy", "Winifred", "Mark"];
+            } else {
+                split_details = {
+                    "Mandy": parseFloat(document.getElementById('val_Mandy').value || 0),
+                    "Winifred": parseFloat(document.getElementById('val_Winifred').value || 0),
+                    "Mark": parseFloat(document.getElementById('val_Mark').value || 0)
+                };
+            }
+
+            const payload = { description, currency, amount, paid_by, split_type, split_details };
+
+            try {
+                // This talks directly to your workflow queue
+                const response = await fetch('https://github.com' + window.location.pathname.split('/')[1] + '/' + window.location.pathname.split('/')[2] + '/dispatches', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `token {{GITHUB_PERSONAL_ACCESS_TOKEN}}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/vnd.github.v3+json'
+                    },
+                    body: JSON.stringify({
+                        event_type: 'log_expense',
+                        client_payload: payload
+                    })
+                });
+
+                if (response.ok) {
+                    alert('✈️ Bill logged successfully! The cloud is computing the balances. Please refresh in 10 seconds.');
+                    document.getElementById('expenseForm').reset();
+                    toggleSplitInputs();
+                } else {
+                    alert('Authentication failed. Check if your PAT_TOKEN secret is correct.');
+                }
+            } catch (error) {
+                alert('Error syncing to cloud: ' + error.message);
+            }
+        });
+
+        window.onload = fetchLatestData;
+    </script>
+</body>
+</html>
